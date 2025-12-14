@@ -59,9 +59,28 @@ on:
 permissions: {}
 
 jobs:
-  get-version-format:
+  validate-input:
     runs-on: ubuntu-latest
     steps:
+      - name: Validate version_increment input
+        run: |
+          case "${{ inputs.version_increment }}" in
+            major|minor|patch)
+              echo "Valid input: ${{ inputs.version_increment }}"
+              ;;
+            *)
+              echo "Invalid input for version_increment: ${{ inputs.version_increment }}"
+              exit 1
+              ;;
+          esac
+    outputs:
+      validated_version_increment: ${{ inputs.version_increment }}
+
+  get-version-format:
+    needs: validate-input
+    runs-on: ubuntu-latest
+    steps:
+    
       - name: Determine version format
         id: version_format
         run: |
