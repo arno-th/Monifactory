@@ -65,7 +65,7 @@ jobs:
       - name: Determine version format
         id: version_format
         run: |
-          v_format="${major}.${minor}.${patch}"
+          v_format="\${major}\${minor}.\${patch}"
           echo "Version Format is $v_format"
           echo "version_format=$v_format" >> "$GITHUB_OUTPUT"
         shell: bash
