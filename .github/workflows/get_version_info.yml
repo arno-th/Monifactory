@@ -7,6 +7,11 @@ on:
         required: false
         type: boolean
         default: false
+      version_increment:
+        description: "Version part to increment: major, minor, or patch"
+        required: true
+        type: string
+        default: "patch"
     outputs:
       version_format:
         description: "Versioning format"
@@ -60,7 +65,7 @@ jobs:
       - name: Determine version format
         id: version_format
         run: |
-          v_format="\${major}.\${minor}.\${patch}"
+          v_format="${major}.${minor}.${patch}"
           echo "Version Format is $v_format"
           echo "version_format=$v_format" >> "$GITHUB_OUTPUT"
         shell: bash
@@ -71,28 +76,60 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get semantic version
-        id: sem_version
-        if: ${{ inputs.format_only == false }}
-        uses: PaulHatch/semantic-version@v5.4.0
-        with:
-          version_format: "${{ steps.version_format.outputs.version_format }}"
-          tag_prefix: ""
+      - name: Get latest release tag
+        id: latest_tag
+        run: |
+          latest_tag=$(git describe --tags `git rev-list --tags --max-count=1`)
+          echo "Latest tag: $latest_tag"
+          echo "latest_tag=$latest_tag" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      - name: Calculate next version
+        id: calculate_version
+        run: |
+          version="${{ steps.latest_tag.outputs.latest_tag }}" || echo "Initial version: 0.0.0"
+          version=${version:-0.0.0}
+          IFS='.' read -r major minor patch <<< "$version"
+          
+          case "${{ inputs.version_increment }}" in
+            major)
+              major=$((major + 1))
+              minor=0
+              patch=0
+              ;;
+            minor)
+              minor=$((minor + 1))
+              patch=0
+              ;;
+            patch)
+              patch=$((patch + 1))
+              ;;
+            *)
+              echo "Invalid version increment: ${{ inputs.version_increment }}"
+              exit 1
+              ;;
+          esac
+
+          new_version="$major.$minor.$patch"
+          echo "new_version=$new_version" >> "$GITHUB_OUTPUT"
+          echo "major=$major" >> "$GITHUB_OUTPUT"
+          echo "minor=$minor" >> "$GITHUB_OUTPUT"
+          echo "patch=$patch" >> "$GITHUB_OUTPUT"
+        shell: bash
 
       - name: Get short Sha
         id: short_sha
         run: |
-          short_sha=$(echo "${{ steps.sem_version.outputs.current_commit }}" | cut -c1-7)
+          short_sha=$(echo "${{ github.sha }}" | cut -c1-7)
           echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
         shell: bash
 
       - name: Get version string
         id: version
         run: |
-          if [[ "${{ github.event.inputs.type }}" == "Stable" ]]; then
-                    version="${{ steps.sem_version.outputs.version}}"
-          else
-            version="${{ steps.sem_version.outputs.version}}+${{steps.short_sha.outputs.short_sha}}"
+          version="${{ steps.calculate_version.outputs.new_version }}"
+          if [[ "${{ github.event.inputs.type }}" != "Stable" ]]; then
+            version+="+${{steps.short_sha.outputs.short_sha}}"
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
         shell: bash
@@ -100,16 +137,16 @@ jobs:
     outputs:
       version_format: ${{ steps.version_format.outputs.version_format }}
       version: ${{ steps.version.outputs.version }}
-      major: ${{ steps.sem_version.outputs.major }}
-      minor: ${{ steps.sem_version.outputs.minor }}
-      patch: ${{ steps.sem_version.outputs.patch }}
-      increment: ${{ steps.sem_version.outputs.increment }}
-      version_type: ${{ steps.sem_version.outputs.version_type}}
-      version_tag: ${{ steps.sem_version.outputs.version_tag }}
-      changed: ${{ steps.sem_version.outputs.changed }}
-      is_tagged: ${{ steps.sem_version.outputs.is_tagged }}
-      authors: ${{ steps.sem_version.outputs.authors }}
-      current_commit: ${{ steps.sem_version.outputs.current_commit }}
-      previous_commit: ${{ steps.sem_version.outputs.previous_commit }}
-      previous_version: ${{ steps.sem_version.outputs.previous_version }}
+      major: ${{ steps.calculate_version.outputs.major }}
+      minor: ${{ steps.calculate_version.outputs.minor }}
+      patch: ${{ steps.calculate_version.outputs.patch }}
+      increment: ${{ jobs.get-version-format.steps.calculate_version.outputs.increment }}
+      version_type: ${{ jobs.get-version-format.steps.version_type }}
+      version_tag: ${{ steps.calculate_version.outputs.new_version }}
+      changed: ${{ steps.calculate_version.outputs.changed }}
+      is_tagged: ${{ steps.calculate_version.outputs.is_tagged }}
+      authors: ${{ steps.calculate_version.outputs.authors }}
+      current_commit: ${{ steps.calculate_version.outputs.current_commit }}
+      previous_commit: ${{ steps.calculate_version.outputs.previous_commit }}
+      previous_version: ${{ steps.calculate_version.outputs.previous_version }}
       current_commit_short: ${{ steps.short_sha.outputs.short_sha }}
